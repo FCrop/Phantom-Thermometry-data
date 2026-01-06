@@ -580,7 +580,7 @@ problem heat(T, vT) =
         kappaVh * (dx(T)*dx(vT) + dy(T)*dy(vT))
     )
     // (3) Advection (only in water) 
-  - int2d(Th)(
+  - int2d(Th)( //- sign for SUPG, + sign for no SUPG; remove the next int with tauSUPG also for no SUPG
   		isInListWater(region) * (rhoWater * cpWater)* T*(ux*dx(vT) + uy*dy(vT)) // new conservative advection Galerkin standard conservative weak form
 		//isInListWater(region) * (rhoWater * cpWater)* (ux*dx(T) + uy*dy(T)) * vT //old advection term, no SUPG, faster, only small differences however
     )
