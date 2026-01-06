@@ -1,5 +1,7 @@
 # Freefem script to simulate temperature changes in the standard NIST phantom
 
+NIST V5.edp
+
 # Phantom-Thermometry-data
 Data for the article "How cool is my phantom? An accuracy assessment of MRI phantom thermometry."
 
