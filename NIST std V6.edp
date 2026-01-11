@@ -3,6 +3,7 @@
 // Stokes—Boussinesq + transient heat equation
 // Heating/cooling on boundary + internal heating due to SAR
 // Version avec SUPG: seems to require finer mesh for consistent calculations
+// this version not validated with measurements, refer to "no SUPG version"
 // ********************************
 load "iovtk" //to save a vtk
 //******************
@@ -827,4 +828,5 @@ plot([ux, uy], wait=true, coef=0.1, cmm="Velocity");
 plot([ux, uy], wait=true, coef=0.1, cmm="Velocity end",svg="Velocity_"+outputName+ ".svg");
 plot(uy, fill=true, value=true, wait=true, cmm="Vertical velocity");
 plot(uy, fill=true, value=true, wait=true, cmm="Vertical velocity end",svg="Vertical Velocity_"+outputName+ ".svg");
+
 
