@@ -1,0 +1,832 @@
+// ********************************
+// Natural convection in a 2D circle NIST standard phantom, approximation of a sphere
+// Stokes—Boussinesq + transient heat equation
+// Heating/cooling on boundary + internal heating due to SAR
+// ********************************
+load "iovtk" //to save a vtk
+//******************
+//// Physical parameters
+//******************
+/////Adapt to experiment:
+
+real tmax = 1000; //100 //18000; //10000.0; //time simulated in seconds
+real Tair = 23.5; //outside air temperature
+real T0   = 15.8; //14.5; //initial phantom temperature
+
+//SAR
+real SAR0 = 1.55;//1;   // peak SAR W/kg (1 W/kg in one case compared with measurements; 2.2 for central gaussian VFA60, 1.55 for edge r²/R0²)
+real sigma = 0.049; //model SAR deposition using a central gaussian distribution; use sigma = 1/2 radius? from https://doi.org/10.58530/2022/2550
+//rtoation: if we want the phantom to be rotated, which influences the sphere positions (coronal/axial for example)
+real thetaDeg = 0.0;      // rotation angle in degrees
+real h    = 15.0; // air convection heat transfer coefficient W/m²K for air outside
+
+//********************
+
+
+////Do not change:
+// rotation angle calculations:
+real theta    = thetaDeg * pi / 180.0;
+real c = cos(theta);
+real s = sin(theta);
+
+//physical parameters
+real kWater = 0.6; //thermal conductivity W/(mK)
+real kPMMA  = 0.19;
+real kPC = 0.2; //
+
+real rhoWater = 1000;
+real rhoPMMA  = 1180;
+real rhoPC = 1200; //kg/m3 density
+
+real cpWater = 4186;
+real cpPMMA  = 1470;
+real cpPC = 1250; //J/(kgK) Heat capacity
+
+real nu   = 1e-6; // kinematic viscosity water m²/s
+real beta = 2.1e-4; // thermal expansion water 1/K
+real g    = 9.81; //gravity constant
+
+
+real dt   = 1.0; //time step 1 s
+
+
+//Outputnames of files:
+string outputName = "NIST_Std_h_" + h + "_Tair_" + Tair + "_T0_" + T0 + "_SAR_" + SAR0;
+
+
+
+
+// ************ Geometry
+real Rw = 0.1;
+real tOuter = 0.008;
+real Ro = Rw + tOuter;
+
+
+real dCrist1 = 0.0065; // distance first ring crystals 0.0065
+real dCrist2 = 0.039; //distance second ring crystals real 0.0029, put larger here to avoid crossing 
+
+real dSph1 = 0.02; // distance first ring spheres originally 0.02
+real dSph2 = 0.066; // distance second ring spheres  originally 0.066
+
+real hSlab1 = 0.05; //horizontal slabs, vertical position: 4.1 cm; 1 cm ; -4 cm Modified to have larger spacing
+real hSlab2 = 0.015;  //modified towards 5cm ; 1.5 cm ; -4.5 cm
+real hSlab3 = -0.045;
+real slabW = 0.15; // 14 cm width
+real slabH = 0.005; // 6 mm height, reduced slightly to 5 mm
+
+real hCrist = 0.025; //height of cristal ring originally 1.9 cm
+real hPD = 0.03 ; //height of the proton density, T1 and T2 rings; 0.027, -0.004, -0.027 originally
+real hT1 = -0.003;
+real hT2 = -0.03;
+
+real rCrist = 0.003; //crystal radii
+real rSphOut = 0.01; // 2 cm diameter spheres
+real tSph = 0.002; // 2mm PC wall spheres (diameter sphere inner = 16 mm)
+real rSphIn = rSphOut-tSph; // inner diameter 16 mm
+
+
+
+
+
+
+// Outside sphere/circle 
+border Couter(t=0,2*pi){
+    x = Ro*cos(t);
+    y = Ro*sin(t);
+    label = 2;// BPCAir; // PC–air
+}
+
+// inner water circle/sphere
+border Cinner(t=2*pi,0){
+    x = Rw*cos(t);
+    y = Rw*sin(t);
+	label = 1; //BPCWater; //PC-water
+}
+
+
+
+//crystals
+border Crist1PC(t=0,2*pi){
+    x = -dCrist2+rCrist*cos(t);
+    y = hCrist+rCrist*sin(t);
+	label = 11;
+}
+
+
+border Crist2PC(t=0,2*pi){
+    x = rCrist*cos(t);
+    y = hCrist+rCrist*sin(t);
+	label = 12;
+}
+
+
+
+
+border Crist4PC(t=0,2*pi){
+    x = dCrist2 + rCrist*cos(t);
+    y = hCrist+rCrist*sin(t);
+	label = 13; //BCrist;
+}
+
+
+
+
+//create PD spheres (1 = from left to right, outer, inner, inner2, outer2)
+border PD1PC(t=0,2*pi){
+    x = -dSph2+ rSphOut*cos(t);
+    y = hPD+rSphOut*sin(t);
+    label = 21;//BPDPC;
+}
+
+border PD1Water(t=0,2*pi){
+    x = -dSph2+ rSphIn*cos(t);
+    y = hPD+rSphIn*sin(t);
+	label = 22;//BPDWater;
+}
+
+border PD2PC(t=0,2*pi){
+    x = -dSph1+ rSphOut*cos(t);
+    y = hPD+rSphOut*sin(t);
+	label = 23; //BPDPC;
+}
+
+border PD2Water(t=0,2*pi){
+    x = -dSph1+ rSphIn*cos(t);
+    y = hPD+rSphIn*sin(t);
+	label = 24; //BPDWater;
+}
+
+border PD3PC(t=0,2*pi){
+    x = dSph1+ rSphOut*cos(t);
+    y = hPD+rSphOut*sin(t);
+	label = 25; //BPDPC;
+}
+
+border PD3Water(t=0,2*pi){
+    x = dSph1+ rSphIn*cos(t);
+    y = hPD+rSphIn*sin(t);
+    label = 26; //BPDWater;
+}
+
+border PD4PC(t=0,2*pi){
+    x = dSph2+ rSphOut*cos(t);
+    y = hPD+rSphOut*sin(t);
+	label = 27;//BPDPC;
+}
+
+border PD4Water(t=0,2*pi){
+    x = dSph2+ rSphIn*cos(t);
+    y = hPD+rSphIn*sin(t);
+    label = 28; //BPDWater;
+}
+
+
+//create T1 spheres (1 = from left to right, outer, inner, inner2, outer2)
+border T11PC(t=0,2*pi){
+    x = -dSph2+ rSphOut*cos(t);
+    y = hT1+rSphOut*sin(t);
+	label = 31;//BT1PC;
+}
+
+border T11Water(t=0,2*pi){
+    x = -dSph2+ rSphIn*cos(t);
+    y = hT1+rSphIn*sin(t);
+    label = 32; //BT1Water;
+}
+
+border T12PC(t=0,2*pi){
+    x = -dSph1+ rSphOut*cos(t);
+    y = hT1+rSphOut*sin(t);
+	label = 33;//BT1PC;
+}
+
+border T12Water(t=0,2*pi){
+    x = -dSph1+ rSphIn*cos(t);
+    y = hT1+rSphIn*sin(t);
+    label = 34; //BT1Water;
+}
+
+border T13PC(t=0,2*pi){
+    x = dSph1+ rSphOut*cos(t);
+    y = hT1+rSphOut*sin(t);
+	label = 35;//BT1PC;
+}
+
+border T13Water(t=0,2*pi){
+    x = dSph1+ rSphIn*cos(t);
+    y = hT1+rSphIn*sin(t);
+    label = 36; // BT1Water;
+}
+
+border T14PC(t=0,2*pi){
+    x = dSph2+ rSphOut*cos(t);
+    y = hT1+rSphOut*sin(t);
+	label = 37; //BT1PC;
+}
+
+border T14Water(t=0,2*pi){
+    x = dSph2+ rSphIn*cos(t);
+    y = hT1+rSphIn*sin(t);
+    label = 38;//BT1Water;
+}
+
+//create T2 spheres (1 = from left to right, outer, inner, inner2, outer2)
+border T21PC(t=0,2*pi){
+    x = -dSph2+ rSphOut*cos(t);
+    y = hT2+rSphOut*sin(t);
+	label = 41;//BT2PC;
+}
+
+border T21Water(t=0,2*pi){
+    x = -dSph2+ rSphIn*cos(t);
+    y = hT2+rSphIn*sin(t);
+    label = 42;//BT2Water;
+}
+
+border T22PC(t=0,2*pi){
+    x = -dSph1+ rSphOut*cos(t);
+    y = hT2+rSphOut*sin(t);
+	label = 43; //BT2PC;
+}
+
+border T22Water(t=0,2*pi){
+    x = -dSph1+ rSphIn*cos(t);
+    y = hT2+rSphIn*sin(t);
+    label = 44;//BT2Water;
+}
+
+border T23PC(t=0,2*pi){
+    x = dSph1+ rSphOut*cos(t);
+    y = hT2+rSphOut*sin(t);
+	label = 45;// BT2PC;
+}
+
+border T23Water(t=0,2*pi){
+    x = dSph1+ rSphIn*cos(t);
+    y = hT2+rSphIn*sin(t);
+    label = 46;//BT2Water;
+}
+
+border T24PC(t=0,2*pi){
+    x = dSph2+ rSphOut*cos(t);
+    y = hT2+rSphOut*sin(t);
+	label = 47;//BT2PC;
+}
+
+border T24Water(t=0,2*pi){
+    x = dSph2+ rSphIn*cos(t);
+    y = hT2+rSphIn*sin(t);
+    label = 48;//BT2Water;
+}
+
+//create horizontal slabs
+
+// --------- Slab1 (upper)
+border Slab1Top(t=-slabW/2, slabW/2){ x=t; y= hSlab1 + slabH/2; label=51; 
+}
+border Slab1Right(t= slabH/2,-slabH/2){ x= slabW/2; y=hSlab1 + t; label=51;
+}
+border Slab1Bot(t= slabW/2,-slabW/2){ x=t; y= hSlab1 -slabH/2; label=51; 
+}
+border Slab1Left(t=-slabH/2, slabH/2){ x=-slabW/2; y= hSlab1 + t; label=51; 
+}
+
+// --------- Slab2 (middle)
+border Slab2Top(t=-slabW/2, slabW/2){ x=t; y= hSlab2 + slabH/2; label=52; 
+}
+border Slab2Right(t= slabH/2,-slabH/2){ x= slabW/2; y=hSlab2 + t; label=52;
+}
+border Slab2Bot(t= slabW/2,-slabW/2){ x=t; y= hSlab2 -slabH/2; label=52;
+}
+border Slab2Left(t=-slabH/2, slabH/2){ x=-slabW/2; y= hSlab2 + t; label=52; 
+}
+
+// --------- Slab3 (bottom)
+border Slab3Top(t=-slabW/2, slabW/2){ x=t; y= hSlab3 + slabH/2; label=53;
+}
+border Slab3Right(t= slabH/2,-slabH/2){ x= slabW/2; y=hSlab3 + t; label=53;
+}
+border Slab3Bot(t= slabW/2,-slabW/2){ x=t; y= hSlab3 -slabH/2; label=53;
+}
+border Slab3Left(t=-slabH/2, slabH/2){ x=-slabW/2; y= hSlab3 + t; label=53;
+}
+
+
+
+//Mesh creation
+//LowRes: not accurate
+/*
+mesh Th0 = buildmesh(
+    Couter(200)
+  + Cinner(-160)
+  + Crist1PC(10) + Crist2PC(10) +  Crist4PC(10)
+  + PD1PC(20) + PD1Water(20)  + PD2PC(20) + PD2Water(20)  + PD3PC(20) + PD3Water(20)  + PD4PC(20) + PD4Water(20)
+  + T11PC(20) + T11Water(20)  + T12PC(20) + T12Water(20)  + T13PC(20) + T13Water(20)  + T14PC(20) + T14Water(20)
+  + T21PC(20) + T21Water(20)  + T22PC(20) + T22Water(20)  + T23PC(20) + T23Water(20)  + T24PC(20) + T24Water(20)
+  + Slab1Top(-40) + Slab1Right(-5) + Slab1Bot(-40) + Slab1Left(-5)
+  + Slab2Top(-40) + Slab2Right(-5) + Slab2Bot(-40) + Slab2Left(-5)
+  + Slab3Top(-40) + Slab3Right(-5) + Slab3Bot(-40) + Slab3Left(-5)
+);
+*/ //
+
+//high res:
+mesh Th0 = buildmesh(
+    Couter(260)
+  + Cinner(-200)
+  + Crist1PC(15) + Crist2PC(15) +  Crist4PC(15)
+  + PD1PC(50) + PD1Water(30)  + PD2PC(50) + PD2Water(30)  + PD3PC(50) + PD3Water(30)  + PD4PC(50) + PD4Water(30)
+  + T11PC(50) + T11Water(30)  + T12PC(50) + T12Water(30)  + T13PC(50) + T13Water(30)  + T14PC(50) + T14Water(30)
+  + T21PC(50) + T21Water(30)  + T22PC(50) + T22Water(30)  + T23PC(50) + T23Water(30)  + T24PC(50) + T24Water(30)
+  + Slab1Top(-90) + Slab1Right(-8) + Slab1Bot(-90) + Slab1Left(-8)
+  + Slab2Top(-90) + Slab2Right(-8) + Slab2Bot(-90) + Slab2Left(-8)
+  + Slab3Top(-90) + Slab3Right(-8) + Slab3Bot(-90) + Slab3Left(-8)
+);
+//when an angle is present: rotate both mesh and points
+mesh Th = movemesh(
+    Th0,
+    [ c*x - s*y,
+      s*x + c*y ]
+); //To rotate the phantom by 90°
+
+//function to rotate points:
+func real rotX(real x0, real y0) { return  c*x0 - s*y0; }
+func real rotY(real x0, real y0) { return  s*x0 + c*y0; }
+
+
+//Checks for regions:
+
+
+cout << "region center " << Th(0, 0).region << endl;
+cout << "region border " << Th(Rw+tOuter/2, 0).region << endl;
+cout << "cristal1 " << Th(-dCrist2, hCrist).region << endl;
+cout << "cristal2 " << Th(0, hCrist).region << endl;
+cout << "cristal3 (not existing) " << Th(dCrist1, hCrist).region << endl;
+cout << "cristal4 " << Th(dCrist2, hCrist).region << endl;
+
+cout << "PD1 center" << Th(-dSph2, hPD).region << endl;
+cout << "PD2 center" << Th(-dSph1, hPD).region << endl;
+cout << "PD3 center" << Th(dSph1, hPD).region << endl;
+cout << "PD4 center" << Th(dSph2, hPD).region << endl;
+
+cout << "PD1 border" << Th(-dSph2+rSphOut-tSph/2, hPD).region << endl;
+cout << "PD2 border" << Th(-dSph1+rSphOut-tSph/2, hPD).region << endl;
+cout << "PD3 border" << Th(dSph1+rSphOut-tSph/2, hPD).region << endl;
+cout << "PD4 border" << Th(dSph2+rSphOut-tSph/2, hPD).region << endl;
+
+cout << "T11 center" << Th(-dSph2, hT1).region << endl;
+cout << "T12 center" << Th(-dSph1, hT1).region << endl;
+cout << "T13 center" << Th(dSph1, hT1).region << endl;
+cout << "T14 center" << Th(dSph2, hT1).region << endl;
+
+cout << "T11 border reg" << Th(-dSph2+rSphOut-tSph/2, hT1).region << endl;
+cout << "T12 border" << Th(-dSph1+rSphOut-tSph/2, hT1).region << endl;
+cout << "T13 border" << Th(dSph1+rSphOut-tSph/2, hT1).region << endl;
+cout << "T14 border" << Th(dSph2+rSphOut-tSph/2, hT1).region << endl;
+
+cout << "T21 center" << Th(-dSph2, hT2).region << endl;
+cout << "T22 center" << Th(-dSph1, hT2).region << endl;
+cout << "T23 center" << Th(dSph1, hT2).region << endl;
+cout << "T24 center" << Th(dSph2, hT2).region << endl;
+
+cout << "T21 border reg" << Th(-dSph2+rSphOut-tSph/2, hT2).region << endl;
+cout << "T22 border" << Th(-dSph1+rSphOut-tSph/2, hT2).region << endl;
+cout << "T23 border" << Th(dSph1+rSphOut-tSph/2, hT2).region << endl;
+cout << "T24 border" << Th(dSph2+rSphOut-tSph/2, hT2).region << endl;
+
+cout << "Slab1 " << Th(0, hSlab1).region << endl;
+cout << "Slab2 " << Th(0, hSlab2).region << endl;
+cout << "Slab3 " << Th(0, hSlab3).region << endl;
+
+
+
+
+//Mesh plotting and labels tests
+//ATTENTION: COLORS are limited, thus it may seem it is all the same region/red mesh, but is a limitation of the visualization!
+//plot(Th, value=region, fill=true, wait=true, cmm="region values");
+//plot(Th, wait=true, cmm="Mesh with boundaries"); // plots mesh
+//plot(Th, wait=true, fill=false, cmm="Boundary labels", value=label);
+
+
+
+int[int] lab = labels(Th);
+cout << "LABELS \n" << lab << endl;
+
+varf onG(u, v) = on(lab, u = label);
+fespace Vh(Th, P1);
+Vh u;
+u[] = onG(0, Vh, tgv = -1);
+//plot(u,wait=true,value=true,fill=true,cmm="border labels?");
+
+
+int[int] regs = regions(Th);
+cout << "REGIONS \n" << lab << endl;
+
+
+
+
+
+
+//***************PHYSICS PART
+// Natural convection + heat transfer in composite PC–water geometry
+
+
+
+
+
+
+
+//  FE spaces
+fespace VhT(Th, P1);
+fespace VhU(Th, [P2, P2]);
+fespace VhP(Th, P1);
+
+VhT T, Told, vT;
+VhU [ux, uy], [vx, vy];
+VhP p, q;
+
+//  Initial conditions 
+T = T0;
+Told = T0;
+[ux, uy] = [0, 0];
+p = 0;
+
+
+// MATERIALS DEFINITION using Vh
+Vh kappaVh;
+Vh rhoCpVh;
+Vh muEffVh; //use mu instead of nu to have consistent unit definition: mu=nu*rho (see further )
+Vh buoyVh;
+
+
+//Inside region numbers:
+int[int] waterRegs = [39,34,32,30,28,26,24,22,20,18,16,14,12]; //water region numbers
+int[int] PCRegs = [40,38,37,36,35,33,31,29,27,25,23,21,19,17,15,13,8,4,0]; //PC region numbers
+
+//borders:
+int[int] fluidLabels = [ 1, 22,24,26,28,32,34,36,38,42,44,46,48 ]; //labels of borders with water inside
+int[int] borderLabels = [1,2, //outer PC shell and water 
+	11,12,13, // crystals
+	21,22,23,24,25,26,27,28, //PD
+	31,32,33,34,35,36,37,38, // T1
+	41,42,43,44,45,46,47,48, //T2
+	51,52,53]; //Slabs; all border labels except air-PC for boundary conditions
+
+func int isInListWater(int r) //function to check if a region is a water region
+{
+	for (int i = 0; i < waterRegs.n; i++)
+        if (r == waterRegs[i]) return 1;
+    return 0;
+}
+func int isInListPC(int r) //function to check if a region is a PC region
+{
+	for (int i = 0; i < PCRegs.n; i++)
+        if (r == PCRegs[i]) return 1;
+    return 0;
+}
+
+//TEST to see if correct
+cout << "waterRegs \n" << waterRegs << endl;
+cout << "test 39 in waterreg \n" << isInListWater(39) << endl;
+cout << "test 39 in PCreg \n" << isInListPC(39) << endl;
+cout << "test 40 in PCreg \n" << isInListPC(40) << endl;
+
+//create the Vh for kappa and rho
+kappaVh = kWater*isInListWater(region) + kPC*isInListPC(region);
+rhoCpVh = isInListWater(region) * (rhoWater * cpWater) + isInListPC(region) * (rhoPC * cpPC);
+
+//check visually
+//plot(kappaVh, fill=true, value=true, cmm="kappa", wait=true);
+
+
+//**********
+// Stokes—Boussinesq problem mu/nu and buoyancy
+//**********
+
+muEffVh = isInListWater(region)*nu*rhoWater + isInListPC(region)*1e6*nu*rhoWater; //multiply by water density to obtain mu
+buoyVh = isInListWater(region)* beta * g * (T - T0); //is 0 initially, When using Tair, would introduce initial artifical buoyancy
+
+//plot(buoyVh, fill=true, value=true, cmm="buoyancy at point 0",wait=true); 
+
+// ******************
+//SAR model: gaussian hotspot model
+// ****************
+
+//for gaussian heat deposition, but currently only using uniform in water. See https://doi.org/10.58530/2022/2550 for gaussian approximation, using sigma < 0.5 radius phantom
+//func SARfield =
+//    SAR0 * exp(-(x^2 + y^2)/(2*sigma^2));
+
+// more realistical, SAR0=1.55 for equivalence
+func SARfield =
+    SAR0 * (x^2 + y^2)/Rw^2;	
+	
+Vh QrfVh;
+QrfVh = isInListWater(region) * rhoWater * SARfield;  //Only heating in water due to SAR
+
+
+
+
+
+
+
+// Add a small stabilization term for regions with zero viscosity
+real eps = 1e-8;
+
+
+
+problem stokes([ux, uy, p], [vx, vy, q]) =
+    // (1) Viscous diffusion: ν ∫Ω ∇u : ∇v ; eps = regularization factor
+    int2d(Th)(
+        (muEffVh + eps) * (					//using nuEffVh which is 0 in polycarbonate or PMMA
+            dx(ux)*dx(vx) + dy(ux)*dy(vx)
+          + dx(uy)*dx(vy) + dy(uy)*dy(vy)
+        )
+    )
+	
+    // (2) Pressure—velocity coupling
+  - int2d(Th)(
+        p * (dx(vx) + dy(vy))
+    )
+	
+    // (3) Incompressibility constraint
+  - int2d(Th)(
+        q * (dx(ux) + dy(uy))
+    )
+	
+    // (4) Buoyancy force
+  - int2d(Th)(
+		isInListWater(region)*rhoWater* beta * g * (T - T0) * vy //using function, as when using a Vh, a Vh is static (old: buoyVh * vy). ; using T-T0, when using T(t-1), would always be low. Perhaps using Tmean from everywhere could be better?
+    )
+	
+    // (5) Mean pressure = 0 constraint (LM approach)
+  + int2d(Th)(
+        1e-8 * p * q
+    )
+    // (6) No-slip boundary conditions: closed system
+	+ on(borderLabels, ux=0,uy=0);
+
+
+
+  
+// ***************
+// Heat equation with advection
+// ***************
+// velocity magnitude
+Vh umag = sqrt(ux^2 + uy^2 + 1e-12);
+
+// element size (approximation)
+Vh hK = sqrt(2.0 * area);
+
+// SUPG parameter
+Vh tauSUPG = hK / (2.0 * umag);
+
+Vh RT =
+    rhoCpVh/dt * (T - Told)
+  + rhoCpVh * (ux*dx(T) + uy*dy(T))
+  - QrfVh;
+
+problem heat(T, vT) =
+    // (1) Transient term, time discretization
+    int2d(Th)(
+        rhoCpVh/dt * T * vT
+    )
+  - int2d(Th)(
+        rhoCpVh/dt * Told * vT
+    )
+    // (2) Diffusion term (weak form of - ∇.(k∇T) )
+  + int2d(Th)(
+        kappaVh * (dx(T)*dx(vT) + dy(T)*dy(vT))
+    )
+    // (3) Advection (only in water) 
+  + int2d(Th)( //- sign for SUPG, + sign for no SUPG
+  		//isInListWater(region) * (rhoWater * cpWater)* T*(ux*dx(vT) + uy*dy(vT)) // new conservative advection Galerkin standard conservative weak form
+		isInListWater(region) * (rhoWater * cpWater)* (ux*dx(T) + uy*dy(T)) * vT //old advection term, no SUPG, faster, only small differences however
+    )
+	/*
+	// (4) SUPG contribution for advection (residual)
++ int2d(Th)(
+      isInListWater(region)
+    * tauSUPG
+    * (ux*dx(vT) + uy*dy(vT))
+    * RT
+)
+*/
+      // (5) RF heating, negative sign
+  - int2d(Th)( QrfVh * vT )
+    // (6) Convective boundary conditions at outer surface
+  + int1d(Th, 2)(
+        h * T * vT
+    )
+  - int1d(Th, 2)(
+        h * Tair * vT
+    )  ;
+//Instead of (6), possible to use boundary fixed temperature: use this to force the outer temperature instead of modelling convectional heating of the outside surface of the phantom
+	//+ on(2, T=Tair);
+	
+
+    
+/*
+//Function for adaptmesh not operational currently
+func f = 1;
+real error = 0.1;
+
+//adaptmesh loop
+for (int i = 0; i < 4; i++){
+    stokes;
+    Th = adaptmesh(Th, u, err=error);
+    error = error/2;
+}
+plot(u);
+*/
+
+
+// Time loop
+
+real Time = 0.0;
+
+//Some temperature points, add more points later
+real centerTemp, boundaryTempUp, boundaryTempDown, Temp1, Temp2, Temp3, tempcrist1, tempcrist2, tempcrist4, 
+	tempPD1, tempPD2, tempPD3, tempPD4, 
+	tempT11, tempT12, tempT13, tempT14, 
+	tempT21, tempT22, tempT23, tempT24,
+	tempFO;
+
+	
+	
+	
+//ofstream tempFile("temperature_evolution_NIST_env_18ks_h15.csv");
+ofstream tempFile(outputName + ".csv");
+tempFile << "Time,CenterTemp,BoundaryTempUp,BoundaryTempDown,Temp1,Temp2,Temp3,tempcrist1,tempcrist2,tempcrist4,tempPD1,tempPD2,tempPD3,tempPD4,tempT11,tempT12,tempT13,tempT14,tempT21,tempT22,tempT23,tempT24,tempFO" << endl;
+//TODO: define points better
+
+cout << "Starting" << endl;
+cout << "Mesh: " << Th.nt << " triangles, " << Th.nv << " vertices" << endl;
+//  Visualization 
+//Thermal plotting levels and colors:
+
+//  Visualization 
+//Thermal plotting levels and colors:
+int nLevels = 12;
+real TminPlot = floor(10*T0)/10.0; //floor(T0); //round to 0.1 °C
+real TmaxPlot = TminPlot + 2.4;//ceil(Tair); //Define manually rather
+
+
+real[int] viso(nLevels+1);
+
+real dTPlot = (TmaxPlot - TminPlot)/nLevels;
+
+for (int i = 0; i <= nLevels; i++)
+    viso[i] = TminPlot + i * dTPlot;
+
+// Colors: Anchor HSV control points (thermal-like)
+real[int] H = [4./6., 0.55, 0.33, 0.16, 0.00];
+real[int] S = [1.00, 1.00, 0.95, 0.90, 0.85];
+real[int] V = [0.45, 0.65, 0.85, 0.95, 1.00];
+//real[int] H = [4./6., 0.72, 0.86, 1.00];
+//real[int] S = [1.00, 1.00, 0.95, 0.90];
+//real[int] V = [0.45, 0.65, 0.85, 1.00];
+//real[int] H = [4./6., 0.50, 1./6., 0.00];
+//real[int] S = [1.00,   1.00, 0.95,  0.90];
+//real[int] V = [0.40,   0.65, 0.90,  1.00];
+//real[int] H = [4./6., 0.50, 1./6., 1.00]; 
+//real[int] S = [1.00,   1.00, 0.95,  0.90];
+//real[int] V = [0.40,   0.65, 0.90,  1.00];
+
+int nA = H.n;   // number of anchors
+
+real[int] colorhsv(3*nLevels);
+
+for (int i = 0; i < nLevels; i++)
+{
+    real t = i / (nLevels - 1.0);       // [0,1]
+    real a = t * (nA - 1);              // anchor coordinate
+    int  k = min(nA - 2, int(a));       // anchor index
+    real s = a - k;                     // local interpolation
+
+    colorhsv[3*i    ] = H[k] + s*(H[k+1] - H[k]);
+    colorhsv[3*i + 1] = S[k] + s*(S[k+1] - S[k]);
+    colorhsv[3*i + 2] = V[k] + s*(V[k+1] - V[k]);
+}
+
+
+
+while (Time < tmax)
+{
+	
+	stokes;
+	heat;
+
+    Told = T;
+    Time += dt;
+
+    // Sample temperatures (avoiding exact boundaries and slab)
+    real yoff = 0.06;  // offset from center to avoid slab
+	
+	centerTemp       = T( rotX(0, yoff),               rotY(0, yoff) );
+	boundaryTempUp   = T( rotX(0, Rw - tOuter/2),      rotY(0, Rw - tOuter/2) );
+	boundaryTempDown = T( rotX(0, -Rw + tOuter/2),     rotY(0, -Rw + tOuter/2) );
+
+	Temp1 = T( rotX(Rw*0.7, 0),  rotY(Rw*0.7, 0) );
+	Temp2 = T( rotX(Rw*0.4, 0),  rotY(Rw*0.4, 0) );
+	Temp3 = T( rotX(-Rw*0.4, 0), rotY(-Rw*0.4, 0) );
+
+	tempcrist1 = T( rotX(-dCrist2, hCrist), rotY(-dCrist2, hCrist) );
+	tempcrist2 = T( rotX(0, hCrist),        rotY(0, hCrist) );
+	tempcrist4 = T( rotX(dCrist2, hCrist),  rotY(dCrist2, hCrist) );
+	
+	tempPD1 = T( rotX(-dSph2, hPD), rotY(-dSph2, hPD) );
+	tempPD2 = T( rotX(-dSph1, hPD), rotY(-dSph1, hPD) );
+	tempPD3 = T( rotX( dSph1, hPD), rotY( dSph1, hPD) );
+	tempPD4 = T( rotX( dSph2, hPD), rotY( dSph2, hPD) );
+
+	tempT11 = T( rotX(-dSph2, hT1), rotY(-dSph2, hT1) );
+	tempT12 = T( rotX(-dSph1, hT1), rotY(-dSph1, hT1) );
+	tempT13 = T( rotX( dSph1, hT1), rotY( dSph1, hT1) );
+	tempT14 = T( rotX( dSph2, hT1), rotY( dSph2, hT1) );
+
+	tempT21 = T( rotX(-dSph2, hT2), rotY(-dSph2, hT2) );
+	tempT22 = T( rotX(-dSph1, hT2), rotY(-dSph1, hT2) );
+	tempT23 = T( rotX( dSph1, hT2), rotY( dSph1, hT2) );
+	tempT24 = T( rotX( dSph2, hT2), rotY( dSph2, hT2) );
+	
+	tempFO = T(rotX(0,hSlab1+slabH+0.005), rotY(0,hSlab1+slabH+0.005));
+	
+/* old no rotation:	
+    centerTemp = T(0, yoff);           
+    boundaryTempUp = T(0, Rw-tOuter/2);    
+    boundaryTempDown = T(0, -Rw+tOuter/2);
+    Temp1 = T(Rw*0.7, 0);
+    Temp2 = T(Rw*0.4, 0);
+    Temp3 = T(-Rw*0.4, 0);
+	tempcrist1 = T(-dCrist2, hCrist);
+	
+	tempcrist2=T(0, hCrist);
+	tempcrist4=T(dCrist2, hCrist);
+	
+	tempPD1=T(-dSph2, hPD);
+	tempPD2=T(-dSph1, hPD);
+	tempPD3=T(dSph1, hPD);
+	tempPD4=T(dSph2, hPD);
+	tempT11=T(-dSph2, hT1);
+	tempT12=T(-dSph1, hT1);
+	tempT13=T(dSph1, hT1);
+	tempT14=T(dSph2, hT1);
+	
+	tempT21=T(-dSph2, hT2);
+	tempT22=T(-dSph1, hT2);
+	tempT23=T(dSph1, hT2);
+	tempT24=T(dSph2, hT2);
+	tempFO = T(0,hSlab1+slabH+0.005);
+*/ //end old rotation	
+	
+
+	
+	/*
+	real Qmin = QrfVh[].min;
+	real Qmax = QrfVh[].max;
+	cout << "QrfVh min/max = " << Qmin << " " << Qmax << endl;
+	
+	cout << "rhoCp min/max = "
+     << rhoCpVh[].min << " "
+     << rhoCpVh[].max << endl;
+    */
+    // Output
+    if (int(Time/dt) % 10 == 0) { //add data points only every 10 seconds
+		//plot(buoyVh, fill=true, value=true, cmm="buoyancy",wait=true); //use to test how buoyancy changes
+        tempFile << Time << "," << centerTemp << "," << boundaryTempUp << "," 
+                 << boundaryTempDown << "," << Temp1 << "," << Temp2 << "," << Temp3 << ","
+				 << tempcrist1 << "," << tempcrist2 << "," << tempcrist4 << "," 
+				 <<	tempPD1 << "," << tempPD2 << "," << tempPD3 << "," << tempPD4 << ","
+				 << tempT11 << "," << tempT12 << "," << tempT13 << "," << tempT14 << "," 
+				 << tempT21 << "," << tempT22 << "," << tempT23 << "," << tempT24 <<  ","
+				 << tempFO << endl;
+        
+        real Tmin = T[].min;
+        real Tmax = T[].max;
+        cout << "t=" << Time << "s | T=[" << Tmin << "," << Tmax << endl;
+    }
+	if (int(Time/dt) % 500 == 0) {  //plot figures every 500s
+        plot(T, cmm="Temperature at time " + Time + "s", fill=true, value=true,viso = viso, hsv=colorhsv);
+		plot(T, fill=true, value=true, cmm="Temperature at time" + Time + "s",svg=outputName + "_Temperature_t_"+Time+"s.svg",viso = viso, hsv=colorhsv);
+        plot([ux, uy], cmm="Velocity field at time " + Time + "s", value=true);
+		plot([ux, uy], cmm="Velocity field at time " + Time + "s", value=true,svg=outputName + "_Velocity_t_"+Time+"s.svg");
+    }
+	
+}
+
+tempFile.flush;
+
+cout << "End" << endl;
+
+
+
+//plot(Th, wait=true, cmm="Mesh", svg="Mesh.svg"); //Mesh
+//plot(T, fill=true, value=true, wait=true, cmm="Temperature");
+//savevtk("testvtu.vtu", T, dataname=DataName, order=Order);
+
+plot(T, fill=true, value=true, wait=true, cmm="Temperature "+ outputName,viso = viso, hsv=colorhsv);//, hsv=colorhsv);
+plot(T, fill=true, value=true, wait=true, cmm="Temperature end",svg="Temp_"+outputName+ ".svg",viso = viso, hsv=colorhsv);
+plot([ux, uy], wait=true, coef=0.1, cmm="Velocity");
+plot([ux, uy], wait=true, coef=0.1, cmm="Velocity end",svg="Velocity_"+outputName+ ".svg");
+plot(uy, fill=true, value=true, wait=true, cmm="Vertical velocity");
+plot(uy, fill=true, value=true, wait=true, cmm="Vertical velocity end",svg="Vertical Velocity_"+outputName+ ".svg");
+
