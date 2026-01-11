@@ -1,10 +1,10 @@
 # Freefem script to simulate temperature changes in the standard NIST phantom
 Alpha version!
 No SUPG : 
-[NIST V5_noSUPG.edp]( https://github.com/FCrop/Phantom-Thermometry-data/blob/main/NIST%20std%20V6_noSUPG.edp )
+[NIST V6_noSUPG.edp]( https://github.com/FCrop/Phantom-Thermometry-data/blob/main/NIST%20std%20V6_noSUPG.edp )
 
 With SUPG: (not validated yet, use without)
-[NIST V5.edp](https://github.com/FCrop/Phantom-Thermometry-data/blob/main/NIST%20std%20V6.edp)
+[NIST V6.edp](https://github.com/FCrop/Phantom-Thermometry-data/blob/main/NIST%20std%20V6.edp)
 
 Attention: only valid for low temperature differences between outside and initial phantom temperature.
 
